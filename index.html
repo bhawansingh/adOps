@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ad Tag Analyzer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+        }
+        /* Custom scrollbar for textareas and div */
+        textarea::-webkit-scrollbar,
+        div::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        textarea::-webkit-scrollbar-track,
+        div::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb,
+        div::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover,
+        div::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        iframe {
+            border: none; /* Remove default iframe border */
+        }
+        /* Table styling */
+        .metrics-table th, .metrics-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e5e7eb; /* tailwind gray-200 */
+            text-align: left;
+        }
+        .metrics-table th {
+            background-color: #f3f4f6; /* tailwind gray-100 */
+            font-weight: 600;
+            color: #374151; /* tailwind gray-700 */
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .summary-metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+        .summary-metric-row:last-child {
+            border-bottom: none;
+        }
+        .summary-metric-label {
+            font-weight: 500;
+            color: #4b5563; /* Tailwind gray-700 */
+        }
+        .summary-metric-value {
+            color: #1f2937; /* Tailwind gray-900 */
+            text-align: right;
+        }
+    </style>
+</head>
+<body class="p-4 bg-white text-gray-800">
+
+    <div class="max-w-7xl mx-auto border border-black rounded-lg shadow-md overflow-hidden">
+        <div class="bg-gray-100 p-4 border-b border-black">
+            <h1 class="text-2xl font-bold text-center">Ad Tag Analyzer</h1>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+            <!-- Input Section -->
+            <div class="border border-black rounded-lg p-4 bg-white flex flex-col h-full">
+                <h2 class="text-xl font-semibold mb-3">Ad Tag Input</h2>
+                <textarea
+                    id="adTagInput"
+                    class="w-full p-2 border border-black rounded-md resize-y min-h-[150px] flex-grow focus:outline-none focus:ring-1 focus:ring-black"
+                    placeholder="Paste your ad tag HTML/JavaScript here..."
+                ></textarea>
+                <button
+                    id="renderButton"
+                    class="mt-4 px-6 py-2 bg-black text-white rounded-md hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-opacity-50 transition-colors duration-200"
+                >
+                    Render Ad Tag & Analyze
+                </button>
+            </div>
+
+            <!-- Preview Section -->
+            <div class="border border-black rounded-lg p-4 bg-white flex flex-col h-full">
+                <h2 class="text-xl font-semibold mb-3">Ad Tag Preview</h2>
+                <!--
+                    WARNING: The 'allow-same-origin' sandbox flag is included to enable PerformanceObserver
+                    to capture more network requests from the ad tag.
+                    HOWEVER, using 'allow-same-origin' with untrusted content significantly
+                    reduces the security isolation of the iframe and should NEVER be used
+                    in a production environment or with potentially malicious ad tags.
+                    This tool is intended for debugging purposes where the user understands
+                    and accepts this security trade-off.
+                -->
+                <iframe
+                    id="adTagPreview"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                    class="w-full bg-gray-50 flex-grow border border-gray-300 rounded-md"
+                    title="Ad Tag Preview"
+                ></iframe>
+            </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div class="p-4">
+            <div class="border border-black rounded-lg p-4 bg-white">
+                <h2 class="text-xl font-semibold mb-3">Analysis Results</h2>
+
+                <!-- Summary Metrics Section -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium mb-2">Summary Metrics</h3>
+                    <p class="text-gray-600 text-sm mb-4">
+                        These metrics provide a high-level overview based on observed behavior and static analysis of the ad tag.
+                        Some browser-level metrics (e.g., actual console errors/warnings, cookie details from iframes) are not always directly observable due to security restrictions (Same-Origin Policy).
+                    </p>
+                    <div id="summaryMetrics" class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                        <!-- Summary metrics will be populated here -->
+                        <p class="text-gray-500">Render an ad tag to see summary metrics.</p>
+                    </div>
+                </div>
+
+                <!-- Network Requests Section -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium mb-2">Observed Network Requests</h3>
+                    <p class="text-gray-600 text-sm mb-4">
+                        This section lists network requests observed from within the preview iframe using the PerformanceObserver API.
+                        While enhanced, full visibility for all cross-origin requests remains subject to browser security policies.
+                    </p>
+                    <div class="text-right mb-2">
+                        <button id="clearLogsButton" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md text-sm hover:bg-gray-300 transition-colors duration-200">Clear Logs</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full metrics-table text-sm border-collapse">
+                            <thead>
+                                <tr>
+                                    <th class="whitespace-nowrap">URL</th>
+                                    <th class="whitespace-nowrap">Domain</th>
+                                    <th class="whitespace-nowrap">Type</th>
+                                    <th class="whitespace-nowrap">Duration (ms)</th>
+                                    <th class="whitespace-nowrap">Size (bytes)</th>
+                                    <th class="whitespace-nowrap">Protocol</th>
+                                </tr>
+                            </thead>
+                            <tbody id="requestsList">
+                                <!-- Network requests will be added here -->
+                                <tr><td colspan="6" class="text-gray-500 text-center py-4">No requests observed yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Vendors Section -->
+                <div>
+                    <h3 class="text-lg font-medium mb-2">Referenced Ad Vendors</h3>
+                    <div id="vendorList" class="space-y-2 text-sm max-h-40 overflow-y-auto pr-2">
+                        <!-- Vendors will be listed here -->
+                        <p class="text-gray-500">Render an ad tag to identify vendors.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const adTagInput = document.getElementById('adTagInput');
+            const renderButton = document.getElementById('renderButton');
+            const adTagPreview = document.getElementById('adTagPreview');
+            const requestsListBody = document.getElementById('requestsList');
+            const vendorList = document.getElementById('vendorList');
+            const summaryMetricsDiv = document.getElementById('summaryMetrics');
+            const clearLogsButton = document.getElementById('clearLogsButton');
+
+            let observedRequestCount = 0; // To track for summary metrics
+            const identifiedVendors = new Set(); // Global set to prevent duplicates in vendor list
+
+            // Define known ad vendors and their common domains/keywords
+            const vendorMapping = {
+                'Google': ['doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'gstatic.com', 'admob.com', 'google.com/ads'],
+                'Sizmek': ['sizmek.com', 'bs.serving-sys.com'],
+                'IAS (Integral Ad Science)': ['iasds01.com', 'adsafeprotected.com', 'integralads.com'],
+                'DV (DoubleVerify)': ['doubleverify.com', 'dv.net', 'tag.dv.com'],
+                'MediaMath': ['mediamath.com'],
+                'AppNexus/Xandr': ['adnxs.com', 'appnexus.com', 'xandr.com'],
+                'Rubicon Project': ['rubiconproject.com'],
+                'Criteo': ['criteo.com'],
+                'Adform': ['adform.net'],
+                'The Trade Desk': ['adsrvr.org', 'thetradedesk.com'],
+                'Adobe Advertising Cloud': ['demdex.net', 'adobe.com/advertising-cloud'],
+                'Nielsen': ['imrworldwide.com', 'nielsen.com'],
+                'Comscore': ['scorecardresearch.com', 'comscore.com'],
+                'Moat': ['moatads.com'],
+                'Quantcast': ['quantserve.com', 'quantcast.com'],
+                'LiveRamp': ['liveramp.com'],
+                'Lotame': ['lotame.com'],
+                'TrustArc/OneTrust': ['onetrust.com', 'trustarc.com'], // For CMPs often found in tags
+                'Kochava': ['kochava.com'],
+                'Adjust': ['adjust.com'],
+                'Branch': ['branch.io'],
+                'Singular': ['singular.net'],
+                'Tapjoy': ['tapjoy.com'],
+                'Vungle': ['vungle.com'],
+                'Unity Ads': ['unity3d.com', 'unityads.unity3d.com'],
+                'Facebook Audience Network': ['facebook.com', 'fbcdn.net', 'facebook.net'],
+                'Amazon Advertising': ['amazon-adsystem.com', 'amazon.com/ads'],
+                'OpenX': ['openx.net'],
+                'PubMatic': ['pubmatic.com'],
+                'Index Exchange': ['casalemedia.com', 'indexexchange.com'],
+                'Verizon Media (Oath)': ['aol.com', 'yahoo.com', 'verizonmedia.com'],
+                'Magnite': ['magnite.com'],
+                'Sharethrough': ['sharethrough.com'],
+                'StackAdapt': ['stackadapt.com']
+            };
+
+            renderButton.addEventListener('click', () => {
+                const adTagContent = adTagInput.value;
+                if (!adTagContent.trim()) {
+                    resetUI();
+                    adTagPreview.srcdoc = '<p class="text-gray-500 p-4">Please enter an ad tag to preview.</p>';
+                    return;
+                }
+
+                resetUI(); // Clear previous results including observed requests
+                loadAdTagInIframe(adTagContent); // This will handle injecting the observer
+                updateSummaryMetricsStatic(adTagContent); // Update initial static metrics
+            });
+
+            clearLogsButton.addEventListener('click', () => {
+                resetUI();
+                adTagPreview.srcdoc = ''; // Clear the iframe content too
+                adTagInput.value = ''; // Clear input
+            });
+
+            /**
+             * Resets the UI elements to their initial state.
+             */
+            function resetUI() {
+                requestsListBody.innerHTML = '<tr><td colspan="6" class="text-gray-500 text-center py-4">No requests observed yet.</td></tr>';
+                vendorList.innerHTML = '<p class="text-gray-500">Render an ad tag to identify vendors.</p>';
+                summaryMetricsDiv.innerHTML = '<p class="text-gray-500">Render an ad tag to see summary metrics.</p>';
+                observedRequestCount = 0;
+                identifiedVendors.clear(); // Clear the global set of identified vendors
+            }
+
+            /**
+             * Loads the provided ad tag content into the iframe and injects the PerformanceObserver script.
+             *
+             * @param {string} adTagContent - The HTML or JavaScript ad tag to load.
+             */
+            function loadAdTagInIframe(adTagContent) {
+                // Set src to about:blank first to ensure a clean slate and trigger onload
+                adTagPreview.src = 'about:blank';
+
+                adTagPreview.onload = () => {
+                    const iframeDoc = adTagPreview.contentWindow.document;
+
+                    // Write the basic HTML structure and the ad tag content
+                    iframeDoc.open();
+                    iframeDoc.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <style>
+                                body { margin: 0; padding: 0; overflow: hidden; }
+                                html, body { height: 100%; width: 100%; }
+                            </style>
+                        </head>
+                        <body>
+                            ${adTagContent}
+                        </body>
+                        </html>
+                    `);
+                    iframeDoc.close();
+
+                    // Inject the PerformanceObserver script into the iframe's head
+                    const scriptElement = iframeDoc.createElement('script');
+                    const networkObserverScriptContent = `
+                        if (window.parent) {
+                            let newEntries = [];
+                            const observer = new PerformanceObserver((list) => {
+                                for (const entry of list.getEntries()) {
+                                    if (entry.entryType === 'resource') {
+                                        // Filter out the about:blank initial document load of the iframe itself
+                                        // and potentially other internal browser resources not related to the ad tag
+                                        if (entry.name && !entry.name.startsWith('about:blank') && !entry.name.startsWith('blob:') && !entry.name.startsWith('data:')) {
+                                            newEntries.push({
+                                                name: entry.name,
+                                                initiatorType: entry.initiatorType,
+                                                duration: entry.duration,
+                                                encodedBodySize: entry.encodedBodySize,
+                                                decodedBodySize: entry.decodedBodySize,
+                                                transferSize: entry.transferSize,
+                                                nextHopProtocol: entry.nextHopProtocol
+                                            });
+                                        }
+                                    }
+                                }
+                                if (newEntries.length > 0) {
+                                    window.parent.postMessage({ type: 'networkLogs', logs: newEntries }, '*');
+                                    newEntries = []; // Clear the batch
+                                }
+                            });
+                            observer.observe({ entryTypes: ['resource'], buffered: true });
+
+                            // Also send buffered entries on load in case some requests complete very fast
+                            window.addEventListener('load', () => {
+                                observer.takeRecords().forEach(entry => {
+                                    if (entry.entryType === 'resource' && entry.name && !entry.name.startsWith('about:blank') && !entry.name.startsWith('blob:') && !entry.name.startsWith('data:')) {
+                                        newEntries.push({
+                                            name: entry.name,
+                                            initiatorType: entry.initiatorType,
+                                            duration: entry.duration,
+                                            encodedBodySize: entry.encodedBodySize,
+                                            decodedBodySize: entry.decodedBodySize,
+                                            transferSize: entry.transferSize,
+                                            nextHopProtocol: entry.nextHopProtocol
+                                        });
+                                    }
+                                });
+                                if (newEntries.length > 0) {
+                                    window.parent.postMessage({ type: 'networkLogs', logs: newEntries }, '*');
+                                    newEntries = [];
+                                }
+                            });
+                        }
+                    `;
+                    // Escaping the closing script tag is crucial when embedding it as a string
+                    scriptElement.textContent = networkObserverScriptContent.replace(/<\/script>/g, '<\\/script>');
+                    iframeDoc.head.appendChild(scriptElement);
+
+                    // Re-evaluate summary metrics that depend on the iframe's DOM after content has loaded
+                    updateSummaryMetricsLive(adTagContent);
+                };
+            }
+
+            // Listen for messages from the iframe (PerformanceObserver reports)
+            window.addEventListener('message', (event) => {
+                // IMPORTANT: In a real application, always verify event.origin for security
+                // For this isolated debugging demo, we'll accept all origins from our own iframe.
+                if (event.data && event.data.type === 'networkLogs' && Array.isArray(event.data.logs)) {
+                    event.data.logs.forEach(log => {
+                        addRequestToTable(log);
+                        identifyVendor(log.name); // Identify vendor for the observed URL
+                        observedRequestCount++; // Increment count for summary metrics
+                    });
+                    updateSummaryMetricsLive(); // Update summary metrics after new requests are added
+                }
+            });
+
+            /**
+             * Adds a network request entry to the table.
+             * @param {object} entry - The network request data from PerformanceEntry.
+             */
+            function addRequestToTable(entry) {
+                // Remove the "No requests observed yet." message if it exists
+                const noRequestsRow = requestsListBody.querySelector('tr td[colspan="6"]');
+                if (noRequestsRow) {
+                    noRequestsRow.closest('tr').remove();
+                }
+
+                const row = requestsListBody.insertRow();
+                row.className = "hover:bg-gray-50";
+
+                let domain = '';
+                try {
+                    domain = new URL(entry.name).hostname;
+                } catch (e) {
+                    domain = 'N/A'; // Handle invalid URLs
+                }
+
+                row.innerHTML = `
+                    <td class="truncate max-w-xs lg:max-w-md" title="${entry.name}">${entry.name}</td>
+                    <td class="whitespace-nowrap" title="${domain}">${domain}</td>
+                    <td class="whitespace-nowrap">${entry.initiatorType || 'other'}</td>
+                    <td class="whitespace-nowrap">${entry.duration ? entry.duration.toFixed(2) : 'N/A'}</td>
+                    <td class="whitespace-nowrap">${entry.transferSize ? entry.transferSize.toLocaleString() : 'N/A'}</td>
+                    <td class="whitespace-nowrap">${entry.nextHopProtocol || 'N/A'}</td>
+                `;
+            }
+
+            /**
+             * Identifies the vendor for a given URL and adds it to the vendor list (if not already present).
+             * Uses a global set `identifiedVendors` to track unique vendors.
+             * @param {string} url - The URL to check.
+             */
+            function identifyVendor(url) {
+                let foundVendor = false;
+                for (const vendorName in vendorMapping) {
+                    const domains = vendorMapping[vendorName];
+                    if (domains.some(domain => url.includes(domain))) {
+                        if (!identifiedVendors.has(vendorName)) {
+                            identifiedVendors.add(vendorName);
+                            const listItem = document.createElement('div');
+                            listItem.className = 'text-gray-700';
+                            listItem.textContent = `• ${vendorName}`;
+                            vendorList.appendChild(listItem);
+                        }
+                        foundVendor = true;
+                        break; // Stop after finding the first match
+                    }
+                }
+                if (identifiedVendors.size === 0) {
+                     vendorList.innerHTML = '<p class="text-gray-500">No recognized vendors identified yet.</p>';
+                }
+            }
+
+
+            /**
+             * Updates the summary metrics displayed at the top of the analysis section.
+             * This function is called with the initial adTagContent for static metrics,
+             * and then again live as network requests are observed.
+             * @param {string} [adTagContent] - The ad tag content, used for static parsing.
+             */
+            function updateSummaryMetricsStatic(adTagContent) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(adTagContent, 'text/html');
+
+                const iframes = doc.querySelectorAll('iframe');
+                const usesDocumentWrite = adTagContent.includes('document.write(') || adTagContent.includes('document.writeln(') ? 'Yes' : 'No';
+                const initialTagSize = new TextEncoder().encode(adTagContent).length;
+
+                // For SSL-Compatibility, we need to re-parse all URLs and check protocols
+                let allUrlsHttps = true;
+                const urlsFromStaticParsing = new Set();
+                doc.querySelectorAll('[src], [href]').forEach(el => {
+                    const url = el.src || el.href;
+                    if (url) urlsFromStaticParsing.add(url);
+                });
+                const scriptContents = Array.from(doc.querySelectorAll('script:not([src])'))
+                                          .map(script => script.textContent)
+                                          .join('\n');
+                const urlRegex = /(https?:\/\/[a-zA-Z0-9.\-_~:/?#[\]@!$&'()*+,;%=\\.\/]+[a-zA-Z0-9.\-_~:/?#[\]@!$&'()*+,;%=]+)/g;
+                let match;
+                while ((match = urlRegex.exec(scriptContents)) !== null) {
+                    if (match[0].length > 10 && !match[0].includes('(') && !match[0].includes(')')) {
+                        urlsFromStaticParsing.add(match[0]);
+                    }
+                }
+                urlsFromStaticParsing.forEach(url => {
+                    try {
+                        const urlObj = new URL(url);
+                        if (urlObj.protocol !== 'https:') {
+                            allUrlsHttps = false;
+                        }
+                    } catch (e) {
+                        allUrlsHttps = false; // Malformed URL implies not fully SSL compatible in this context
+                    }
+                });
+
+
+                // Initial rendering of summary metrics, will be updated live later
+                summaryMetricsDiv.innerHTML = `
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Total Observed Network Requests:</span>
+                        <span class="summary-metric-value" id="observedRequestCount">${observedRequestCount}</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Iframe Count (Statically Parsed):</span>
+                        <span class="summary-metric-value">${iframes.length}</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Uses document.write():</span>
+                        <span class="summary-metric-value">${usesDocumentWrite}</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Initial Tag Size (bytes):</span>
+                        <span class="summary-metric-value">${initialTagSize}</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">SSL-Compatibility (All Statically Found URLs HTTPS):</span>
+                        <span class="summary-metric-value">${allUrlsHttps ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Creative Rendered (in Preview):</span>
+                        <span class="summary-metric-value" id="creativeRenderedStatus">No</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Console Errors/Warnings:</span>
+                        <span class="summary-metric-value">Limited Visibility (SOP)</span>
+                    </div>
+                    <div class="summary-metric-row">
+                        <span class="summary-metric-label">Cookies Dropped:</span>
+                        <span class="summary-metric-value">Limited Visibility (SOP)</span>
+                    </div>
+                `;
+            }
+
+            /**
+             * Updates live summary metrics after the iframe content has loaded and requests are observed.
+             */
+            function updateSummaryMetricsLive() {
+                const creativeRendered = adTagPreview.contentDocument && adTagPreview.contentDocument.body && adTagPreview.contentDocument.body.children.length > 0 ? 'Yes' : 'No';
+                const creativeRenderedElement = document.getElementById('creativeRenderedStatus');
+                if (creativeRenderedElement) {
+                    creativeRenderedElement.textContent = creativeRendered;
+                }
+
+                const observedRequestCountElement = document.getElementById('observedRequestCount');
+                if (observedRequestCountElement) {
+                    observedRequestCountElement.textContent = observedRequestCount;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
